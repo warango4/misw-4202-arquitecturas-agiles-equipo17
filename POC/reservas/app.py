@@ -12,7 +12,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "reservas")
 TZ = pytz.timezone("America/Bogota")
 
 def get_timestamp():
-    return datetime.now(TZ).strftime("%Y/%b/%d %H:%M")
+    return datetime.now(TZ).strftime("%Y/%b/%d %H:%M:%S")
 
 celery = Celery(
     "reservas",
@@ -24,17 +24,24 @@ celery.conf.task_default_queue = REQUEST_QUEUE
 celery.conf.task_acks_late = True
 celery.conf.worker_prefetch_multiplier = 1
 
-@celery.task(name="reservas.process_health")
-def process_health(message):
+@celery.task(name="reservas.health_check_funcional")
+def health_check_funcional(message):
     timestamp = get_timestamp()
-    print(f"Lectura de Salud Nueva - {timestamp}")
+    original_timestamp = message.get('original_timestamp', timestamp)
+    check_id = message.get('check_id', 'unknown')
+    
+    print(f"[{SERVICE_NAME}] Health check recibido - {timestamp}")
+    print(f"[{SERVICE_NAME}] original_timestamp={original_timestamp} | check_id={check_id}")
+    
     response = {
-        "status": True,
-        "timestamp": timestamp,
+        "available": True,
+        "check_id": check_id,
+        "original_timestamp": original_timestamp,
+        "response_timestamp": timestamp,
         "service": SERVICE_NAME
     }
     celery.send_task(
-        "monitor.receive_health",
+        "monitor.recibir_health_check_funcional",
         args=[response],
         queue=RESPONSE_QUEUE
     )
