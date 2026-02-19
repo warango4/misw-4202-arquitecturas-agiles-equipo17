@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+
+  reservas-principal:
+    build: ./reservas
+    container_name: reservas-principal
+    depends_on:
+      - redis
+    restart: always
+    environment:
+      - SERVICE_NAME=reservas-principal
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
+      - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+
+
+  reservas-redundancia:
+    build: ./reservas
+    container_name: reservas-redundancia
+    depends_on:
+      - redis
+    restart: always
+    environment:
+      - SERVICE_NAME=reservas-redundancia
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
+      - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+
+
+  monitor:
+    build: ./monitor
+    container_name: monitor
+    depends_on:
+      - redis
+      - reservas-principal
+      - reservas-redundancia
+    restart: always
+    environment:
+      - SERVICE_NAME=monitor
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
+      - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
