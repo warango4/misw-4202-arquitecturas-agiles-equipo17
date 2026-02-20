@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   redis:
@@ -22,6 +20,13 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 
   reservas-redundancia:
@@ -36,6 +41,13 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 
   monitor:
@@ -52,3 +64,10 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

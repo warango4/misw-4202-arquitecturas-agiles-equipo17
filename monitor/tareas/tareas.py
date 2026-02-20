@@ -4,6 +4,9 @@ Implementa health check funcional por cola para verificar disponibilidad del ser
 """
 import logging
 import uuid
+import os
+import json
+import time
 from datetime import datetime
 import pytz
 from celery import Celery
@@ -14,15 +17,78 @@ from monitor.config import get_config
 
 config = get_config()
 
-# Configuración del logger para métricas y trazabilidad
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(config.LOG_FILE),
-        logging.StreamHandler()
-    ]
-)
+# Asegurar que el directorio de logs exista
+log_dir = os.path.dirname(config.LOG_FILE)
+if log_dir:
+    os.makedirs(log_dir, exist_ok=True)
+
+
+# ============================================================================
+# LOGGER ESTRUCTURADO PARA OBSERVABILIDAD
+# ============================================================================
+class StructuredLogger:
+    """Logger estructurado con trazas claras para observabilidad."""
+    
+    def __init__(self, service_name: str, log_file: str):
+        self.service_name = service_name
+        self.tz = pytz.timezone(config.TIMEZONE)
+        self.logger = logging.getLogger(service_name)
+        self.logger.setLevel(logging.INFO)
+        
+        # Evitar duplicación de handlers
+        if not self.logger.handlers:
+            formatter = logging.Formatter('%(message)s')
+            
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)
+    
+    def _get_timestamp(self) -> str:
+        return datetime.now(self.tz).isoformat()
+    
+    def _format_log(self, level: str, event: str, check_id: str = None, **kwargs) -> str:
+        """Genera log estructurado en JSON."""
+        log_entry = {
+            "timestamp": self._get_timestamp(),
+            "level": level,
+            "service": self.service_name,
+            "event": event,
+        }
+        if check_id:
+            log_entry["check_id"] = check_id
+        log_entry.update(kwargs)
+        return json.dumps(log_entry, ensure_ascii=False)
+    
+    def info(self, event: str, check_id: str = None, **kwargs):
+        self.logger.info(self._format_log("INFO", event, check_id, **kwargs))
+    
+    def warning(self, event: str, check_id: str = None, **kwargs):
+        self.logger.warning(self._format_log("WARNING", event, check_id, **kwargs))
+    
+    def error(self, event: str, check_id: str = None, **kwargs):
+        self.logger.error(self._format_log("ERROR", event, check_id, **kwargs))
+    
+    def state_change(self, check_id: str, previous_state: str, current_state: str, **kwargs):
+        """Log especial para cambios de estado."""
+        self.logger.warning(self._format_log(
+            "STATE_CHANGE", 
+            "SERVICE_STATE_CHANGED", 
+            check_id,
+            previous_state=previous_state,
+            current_state=current_state,
+            **kwargs
+        ))
+
+
+# Inicializar logger estructurado
+structured_logger = StructuredLogger('monitor', config.LOG_FILE)
+
+# Logger básico para compatibilidad
 logger = logging.getLogger('monitor_health_check')
 
 # Función helper para obtener timestamp con timezone
@@ -137,17 +203,30 @@ state_manager = ServiceStateManager()
 # Signals para trazabilidad
 @task_prerun.connect
 def task_prerun_handler(task_id, task, args, kwargs, **kw):
-    logger.info(f"[METRIC] TASK_START | task_id={task_id} | task_name={task.name}")
+    structured_logger.info(
+        event="TASK_START",
+        task_id=task_id,
+        task_name=task.name
+    )
 
 
 @task_postrun.connect
 def task_postrun_handler(task_id, task, args, kwargs, retval, state, **kw):
-    logger.info(f"[METRIC] TASK_END | task_id={task_id} | task_name={task.name} | state={state}")
+    structured_logger.info(
+        event="TASK_END",
+        task_id=task_id,
+        task_name=task.name,
+        state=state
+    )
 
 
 @task_failure.connect
 def task_failure_handler(task_id, exception, args, kwargs, traceback, einfo, **kw):
-    logger.error(f"[METRIC] TASK_FAILURE | task_id={task_id} | exception={str(exception)}")
+    structured_logger.error(
+        event="TASK_FAILURE",
+        task_id=task_id,
+        exception=str(exception)
+    )
 
 
 # ============================================================================
@@ -160,14 +239,17 @@ def health_check_funcional(self):
     Envía health check funcional al servicio de reservas por cola.
     Verifica que el worker de reservas esté funcionando.
     """
+    start_time = time.time()
     timestamp = get_timestamp()
     check_id = str(uuid.uuid4())
     
-    logger.info(
-        f"[METRIC] HEALTH_CHECK_START | "
-        f"timestamp={timestamp} | "
-        f"check_id={check_id} | "
-        f"method=QUEUE"
+    # 🔹 LOG: Inicio del health check con ID único
+    structured_logger.info(
+        event="HEALTH_CHECK_START",
+        check_id=check_id,
+        method="QUEUE",
+        target_service="reservas",
+        sent_at=timestamp
     )
     
     state_manager.increment_metric('total_health_checks')
@@ -176,12 +258,16 @@ def health_check_funcional(self):
     # Guardar check_id con TTL para control de timeout
     if state_manager.redis_client:
         try:
-            state_manager.redis_client.setex(f'health_check:{check_id}', config.HEALTH_CHECK_TTL, timestamp)
+            # Guardar timestamp de inicio para calcular latencia
+            state_manager.redis_client.setex(
+                f'health_check:{check_id}', 
+                config.HEALTH_CHECK_TTL, 
+                json.dumps({"timestamp": timestamp, "start_time": start_time})
+            )
         except Exception as e:
-            logger.error(f"[METRIC] Error guardando check_id: {e}")
+            structured_logger.error(event="REDIS_ERROR", check_id=check_id, error=str(e))
     
     # Enviar tarea al servicio de reservas
-    print(f"Enviando health check funcional a reservas | check_id={check_id} | timestamp={timestamp}")
     try:
         celery_app.send_task(
             'reservas.health_check_funcional',
@@ -194,9 +280,20 @@ def health_check_funcional(self):
             }],
             queue=config.RESERVAS_QUEUE
         )
-        logger.info(f"[METRIC] HEALTH_CHECK_SENT | check_id={check_id}")
+        
+        # 🔹 LOG: Health check enviado exitosamente
+        structured_logger.info(
+            event="HEALTH_CHECK_SENT",
+            check_id=check_id,
+            target_queue=config.RESERVAS_QUEUE,
+            status="SENT"
+        )
     except Exception as e:
-        logger.error(f"[METRIC] HEALTH_CHECK_SEND_ERROR | check_id={check_id} | error={str(e)}")
+        structured_logger.error(
+            event="HEALTH_CHECK_SEND_ERROR",
+            check_id=check_id,
+            error=str(e)
+        )
         procesar_respuesta.delay(False, timestamp, f"Error enviando: {str(e)}")
     
     # Programar verificación de timeout
@@ -208,6 +305,7 @@ def health_check_funcional(self):
 @celery_app.task(name='monitor.recibir_health_check_funcional', bind=True)
 def recibir_health_check_funcional(self, response_data: dict):
     """Recibe la respuesta del health check funcional."""
+    received_at = time.time()
     timestamp = get_timestamp()
     check_id = response_data.get('check_id', 'unknown')
     is_available = response_data.get('available', False)
@@ -216,32 +314,39 @@ def recibir_health_check_funcional(self, response_data: dict):
     service = response_data.get('service', 'unknown')
     error = response_data.get('error')
     
-    print(f"[MONITOR] Respuesta recibida de {service}")
-    print(f"[MONITOR] original_timestamp={original_timestamp} | response_timestamp={response_timestamp} | received_at={timestamp}")
-    print(f"[MONITOR] check_id={check_id} | available={is_available}")
-    
-    # Calcular latencia
-    try:
-        from dateutil import parser
-        latency_ms = (parser.isoparse(timestamp) - parser.isoparse(original_timestamp)).total_seconds() * 1000
-    except:
-        latency_ms = None
-    
-    # Verificar si el check aún es válido
+    # 🔹 Calcular latencia round-trip desde Redis
+    latency_ms = None
     if state_manager.redis_client:
         try:
-            if not state_manager.redis_client.get(f'health_check:{check_id}'):
-                logger.warning(f"[METRIC] HEALTH_CHECK_EXPIRED | check_id={check_id}")
+            check_data = state_manager.redis_client.get(f'health_check:{check_id}')
+            if check_data:
+                data = json.loads(check_data)
+                start_time = data.get('start_time')
+                if start_time:
+                    latency_ms = (received_at - float(start_time)) * 1000
+                state_manager.redis_client.delete(f'health_check:{check_id}')
+            else:
+                # Check expirado
+                structured_logger.warning(
+                    event="HEALTH_CHECK_EXPIRED",
+                    check_id=check_id,
+                    reason="Check ID not found in Redis (TTL expired or already processed)"
+                )
                 return {'status': 'expired'}
-            state_manager.redis_client.delete(f'health_check:{check_id}')
-        except:
-            pass
+        except Exception as e:
+            structured_logger.error(event="REDIS_ERROR", check_id=check_id, error=str(e))
     
-    logger.info(
-        f"[METRIC] HEALTH_CHECK_RESPONSE_RECEIVED | "
-        f"check_id={check_id} | "
-        f"available={is_available} | "
-        f"latency_ms={f'{latency_ms:.2f}' if latency_ms else 'N/A'}"
+    # 🔹 LOG: Respuesta recibida con métricas de tiempo
+    structured_logger.info(
+        event="HEALTH_CHECK_RESPONSE_RECEIVED",
+        check_id=check_id,
+        source_service=service,
+        available=is_available,
+        original_timestamp=original_timestamp,
+        response_timestamp=response_timestamp,
+        received_at=timestamp,
+        latency_ms=round(latency_ms, 3) if latency_ms else None,
+        status="SUCCESS" if is_available else "FAILED"
     )
     
     procesar_respuesta.delay(is_available, timestamp, error)
@@ -252,16 +357,26 @@ def recibir_health_check_funcional(self, response_data: dict):
 @celery_app.task(name='monitor.verificar_timeout', bind=True)
 def verificar_timeout(self, check_id: str, original_timestamp: str):
     """Verifica si el health check excedió el timeout."""
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = get_timestamp()
     
     if state_manager.redis_client:
         try:
-            if state_manager.redis_client.get(f'health_check:{check_id}'):
+            check_data = state_manager.redis_client.get(f'health_check:{check_id}')
+            if check_data:
                 state_manager.redis_client.delete(f'health_check:{check_id}')
-                logger.error(f"[METRIC] HEALTH_CHECK_TIMEOUT | check_id={check_id}")
-                procesar_respuesta.delay(False, timestamp, "TIMEOUT: Sin respuesta en 5 segundos")
-        except:
-            pass
+                
+                # 🔹 LOG: Timeout detectado
+                structured_logger.error(
+                    event="HEALTH_CHECK_TIMEOUT",
+                    check_id=check_id,
+                    original_timestamp=original_timestamp,
+                    timeout_detected_at=timestamp,
+                    timeout_seconds=config.HEALTH_CHECK_TIMEOUT,
+                    status="TIMEOUT"
+                )
+                procesar_respuesta.delay(False, timestamp, "TIMEOUT: Sin respuesta en tiempo límite")
+        except Exception as e:
+            structured_logger.error(event="REDIS_ERROR", check_id=check_id, error=str(e))
     
     return {'check_id': check_id, 'status': 'timeout_verified'}
 
@@ -270,29 +385,45 @@ def verificar_timeout(self, check_id: str, original_timestamp: str):
 def procesar_respuesta(self, is_available: bool, timestamp: str, error_message: str = None):
     """Procesa la respuesta y notifica cambios de estado."""
     previous_state = state_manager.get_state()
+    current_state = is_available
     
-    logger.info(
-        f"[METRIC] PROCESS_RESPONSE | "
-        f"previous={previous_state} | "
-        f"current={is_available}"
+    # 🔹 LOG: Procesamiento de respuesta
+    structured_logger.info(
+        event="PROCESS_RESPONSE",
+        previous_state="AVAILABLE" if previous_state else "UNAVAILABLE",
+        current_state="AVAILABLE" if current_state else "UNAVAILABLE",
+        state_changed=previous_state != current_state
     )
     
     if is_available:
         state_manager.increment_metric('successful_health_checks')
         if not previous_state:
-            # Servicio recuperado
-            logger.info(f"[METRIC] SERVICE_RECOVERED | timestamp={timestamp}")
+            # 🔹 LOG: Cambio de estado - Servicio RECUPERADO
+            structured_logger.state_change(
+                check_id=None,
+                previous_state="UNAVAILABLE",
+                current_state="AVAILABLE",
+                event_type="SERVICE_RECOVERED",
+                recovered_at=timestamp,
+                message="El servicio de reservas se ha recuperado"
+            )
             state_manager.set_metric('last_recovery_timestamp', timestamp)
             state_manager.set_state(True)
-            # notificar_cambio_estado.delay('SERVICE_RECOVERED', timestamp)
     else:
         state_manager.increment_metric('failed_health_checks')
         if previous_state:
-            # Servicio caído
-            logger.warning(f"[METRIC] SERVICE_DOWN | timestamp={timestamp} | error={error_message}")
+            # 🔹 LOG: Cambio de estado - Servicio CAÍDO
+            structured_logger.state_change(
+                check_id=None,
+                previous_state="AVAILABLE",
+                current_state="UNAVAILABLE",
+                event_type="SERVICE_DOWN",
+                down_at=timestamp,
+                error=error_message,
+                message="El servicio de reservas no está disponible"
+            )
             state_manager.set_metric('last_downtime_start', timestamp)
             state_manager.set_state(False)
-            # notificar_cambio_estado.delay('SERVICE_DOWN', timestamp, error_message)
     
     return {'previous': previous_state, 'current': is_available}
 

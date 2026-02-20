@@ -18,9 +18,9 @@ class DefaultConfig:
     FLASK_PORT = int(os.environ.get('FLASK_PORT', 5003))
     
     # Health Check
-    HEALTH_CHECK_INTERVAL = float(os.environ.get('HEALTH_CHECK_INTERVAL', 0.4))  # 200ms
-    HEALTH_CHECK_TIMEOUT = int(os.environ.get('HEALTH_CHECK_TIMEOUT', 5))  # segundos
-    HEALTH_CHECK_TTL = int(os.environ.get('HEALTH_CHECK_TTL', 60))  # segundos
+    HEALTH_CHECK_INTERVAL = float(os.environ.get('HEALTH_CHECK_INTERVAL', 5))  # 200ms
+    HEALTH_CHECK_TIMEOUT = int(os.environ.get('HEALTH_CHECK_TIMEOUT', 10))  # segundos
+    HEALTH_CHECK_TTL = int(os.environ.get('HEALTH_CHECK_TTL', 15))  # segundos
     
     # Colas
     MONITOR_QUEUE = os.environ.get('MONITOR_QUEUE', 'healthcheck.response')
@@ -32,7 +32,7 @@ class DefaultConfig:
     
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
-    LOG_FILE = os.environ.get('LOG_FILE', 'logs/monitor_health_check.log')
+    LOG_FILE = os.environ.get('LOG_FILE', '/app/logs/monitor.log')
     
     # Timezone
     TIMEZONE = os.environ.get('TIMEZONE', 'America/Bogota')
