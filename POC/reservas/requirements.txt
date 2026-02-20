@@ -1,4 +1,0 @@
-flask
-celery
-redis
-pytz
