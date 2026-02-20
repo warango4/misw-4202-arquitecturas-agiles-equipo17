@@ -20,7 +20,7 @@ services:
       - SERVICE_NAME=reservas-principal
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
+      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request.principal
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
       - SOLICITUDES_QUEUE=reservas.principal.solicitudes
       - RESPUESTAS_QUEUE=reservas.principal.respuestas
@@ -45,7 +45,7 @@ services:
       - SERVICE_NAME=reservas-redundancia
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
+      - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request.redundancia
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
       - SOLICITUDES_QUEUE=reservas.redundancia.solicitudes
       - RESPUESTAS_QUEUE=reservas.redundancia.respuestas
@@ -74,6 +74,39 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+      - RESERVAS_QUEUE=healthcheck.request.principal
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+  receptor:
+    build: ./receptor
+    container_name: receptor
+    depends_on:
+      - redis
+      - monitor
+      - reservas-principal
+      - reservas-redundancia
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - SERVICE_NAME=receptor
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MONITOR_URL=http://monitor:5003
+      - RESERVAS_PRINCIPAL_QUEUE=reservas.principal.solicitudes
+      - RESERVAS_REDUNDANCIA_QUEUE=reservas.redundancia.solicitudes
+      - RESPUESTAS_PRINCIPAL_QUEUE=reservas.principal.respuestas
+      - RESPUESTAS_REDUNDANCIA_QUEUE=reservas.redundancia.respuestas
+      - FLASK_PORT=5000
+      - CACHE_ESTADO_TTL=1
+      - SOLICITUD_TIMEOUT=5
     volumes:
       - ./logs:/app/logs
     logging:

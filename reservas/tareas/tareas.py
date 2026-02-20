@@ -201,20 +201,22 @@ def health_check_funcional(self, request_data: dict):
 def procesar_solicitud(self, request_data: dict):
     """
     Procesa una solicitud de reserva enviada por el receptor.
+    Guarda el resultado directamente en Redis para respuesta inmediata.
 
     El receptor envía:
         {
             'solicitud_id': str,
-            'datos': dict,
-            'callback_queue': str   (opcional)
+            'datos': dict
         }
     """
+    import redis as redis_lib
+    import json
+    
     tz = pytz.timezone(config.TIMEZONE)
     timestamp = datetime.now(tz).isoformat()
 
     solicitud_id = request_data.get('solicitud_id', 'unknown')
     datos = request_data.get('datos', {})
-    callback_queue = request_data.get('callback_queue', config.RESPUESTAS_QUEUE)
 
     structured_logger.info(
         event="SOLICITUD_RECIBIDA",
@@ -231,7 +233,9 @@ def procesar_solicitud(self, request_data: dict):
         resultado = {
             'solicitud_id': solicitud_id,
             'status': 'procesada',
+            'estado': 'completada',
             'service': config.SERVICE_NAME,
+            'instancia': config.SERVICE_NAME,
             'timestamp': timestamp,
             'datos_procesados': datos
         }
@@ -245,7 +249,9 @@ def procesar_solicitud(self, request_data: dict):
         resultado = {
             'solicitud_id': solicitud_id,
             'status': 'error',
+            'estado': 'error',
             'service': config.SERVICE_NAME,
+            'instancia': config.SERVICE_NAME,
             'timestamp': timestamp,
             'error': str(e)
         }
@@ -255,12 +261,22 @@ def procesar_solicitud(self, request_data: dict):
             error=str(e)
         )
 
-    # Enviar resultado al receptor si hay cola de respuesta
-    if callback_queue:
-        celery_app.send_task(
-            'receptor.recibir_respuesta',
-            args=[resultado],
-            queue=callback_queue
+    # Guardar resultado DIRECTAMENTE en Redis (sin cola intermedia)
+    try:
+        r = redis_lib.from_url(config.CELERY_BROKER_URL)
+        key = f'receptor:respuesta:{solicitud_id}'
+        r.setex(key, 3600, json.dumps(resultado))  # TTL: 1 hora
+        
+        structured_logger.info(
+            event="RESULTADO_GUARDADO_REDIS",
+            solicitud_id=solicitud_id,
+            key=key
+        )
+    except Exception as e:
+        structured_logger.error(
+            event="ERROR_GUARDANDO_REDIS",
+            solicitud_id=solicitud_id,
+            error=str(e)
         )
 
     return resultado

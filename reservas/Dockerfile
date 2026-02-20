@@ -15,5 +15,6 @@ COPY . /app/reservas/
 # Agregar /app al PYTHONPATH
 ENV PYTHONPATH=/app
 
-# Ejecutar worker Celery (ambas colas) + Flask
-CMD ["sh", "-c", "celery -A reservas.tareas.tareas worker --loglevel=info -Q healthcheck.request,reservas.solicitudes & python reservas/app.py"]
+# Ejecutar worker Celery con concurrencia (10 workers) + Flask
+# Usa las variables de entorno para las colas específicas de esta instancia
+CMD sh -c "celery -A reservas.tareas.tareas worker --loglevel=info --concurrency=10 -Q $HEALTHCHECK_REQUEST_QUEUE,$SOLICITUDES_QUEUE & python reservas/app.py"
