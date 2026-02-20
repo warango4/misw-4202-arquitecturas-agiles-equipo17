@@ -5,7 +5,7 @@ services:
     container_name: redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
 
   reservas-principal:
@@ -14,12 +14,16 @@ services:
     depends_on:
       - redis
     restart: always
+    ports:
+      - "5001:5001"
     environment:
       - SERVICE_NAME=reservas-principal
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+      - SOLICITUDES_QUEUE=reservas.principal.solicitudes
+      - RESPUESTAS_QUEUE=reservas.principal.respuestas
     volumes:
       - ./logs:/app/logs
     logging:
@@ -35,12 +39,16 @@ services:
     depends_on:
       - redis
     restart: always
+    ports:
+      - "5002:5001"
     environment:
       - SERVICE_NAME=reservas-redundancia
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
+      - SOLICITUDES_QUEUE=reservas.redundancia.solicitudes
+      - RESPUESTAS_QUEUE=reservas.redundancia.respuestas
     volumes:
       - ./logs:/app/logs
     logging:
@@ -58,6 +66,8 @@ services:
       - reservas-principal
       - reservas-redundancia
     restart: always
+    ports:
+      - "5003:5003"
     environment:
       - SERVICE_NAME=monitor
       - CELERY_BROKER_URL=redis://redis:6379/0
