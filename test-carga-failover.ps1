@@ -1,10 +1,13 @@
 # Script de prueba de carga con failover aleatorio
-# Envía 60 solicitudes en paralelo e induce error durante el proceso
+# Envía solicitudes en paralelo e induce error durante el proceso
 # Ejecutar: .\test-carga-failover.ps1
+
+# Configuración
+$TOTAL_SOLICITUDES = 200
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  PRUEBA DE CARGA CON FAILOVER ALEATORIO" -ForegroundColor Cyan
-Write-Host "  60 solicitudes en paralelo" -ForegroundColor Cyan
+Write-Host "  $TOTAL_SOLICITUDES solicitudes en paralelo" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -55,7 +58,7 @@ $errorInducido = $false
 
 Write-Host ""
 Write-Host "Configuracion de la prueba:" -ForegroundColor Yellow
-Write-Host "  Total de solicitudes: 60" -ForegroundColor Cyan
+Write-Host "  Total de solicitudes: $TOTAL_SOLICITUDES" -ForegroundColor Cyan
 Write-Host "  Solicitudes en paralelo: 10" -ForegroundColor Cyan
 Write-Host "  Error se inducira despues de: $errorInducidoEn solicitudes" -ForegroundColor Cyan
 Write-Host ""
@@ -68,10 +71,10 @@ Write-Host ""
 
 $startTime = Get-Date
 
-# Enviar 60 solicitudes en bloques de 10 en paralelo
-for ($i = 1; $i -le 60; $i += 10) {
+# Enviar solicitudes en bloques de 10 en paralelo
+for ($i = 1; $i -le $TOTAL_SOLICITUDES; $i += 10) {
     $bloque = $i
-    $hasta = [Math]::Min($i + 9, 60)
+    $hasta = [Math]::Min($i + 9, $TOTAL_SOLICITUDES)
     
     Write-Host "  Enviando solicitudes $bloque-$hasta..." -ForegroundColor Gray
     
@@ -252,7 +255,7 @@ for ($i = 1; $i -le 60; $i += 10) {
     }
     
     # Pequena pausa entre bloques para no saturar
-    if ($hasta -lt 60) {
+    if ($hasta -lt $TOTAL_SOLICITUDES) {
         Start-Sleep -Milliseconds 500
     }
 }
@@ -463,7 +466,7 @@ $erroresEnvio = ($solicitudes | Where-Object { $_.status -eq "error_envio" }).Co
 
 Write-Host "Estados de Solicitudes:" -ForegroundColor White
 Write-Host "  Total registradas: $($solicitudes.Count)" -ForegroundColor Gray
-if ($exitosas -eq 60) {
+if ($exitosas -eq $TOTAL_SOLICITUDES) {
     Write-Host "  Completadas: $exitosas" -ForegroundColor Green
 } else {
     Write-Host "  Completadas: $exitosas" -ForegroundColor Yellow
@@ -492,11 +495,11 @@ if ($erroresEnvio -gt 0) {
 Write-Host ""
 
 # Evaluacion del sistema
-$sinPerdidas = ($exitosas + $fallidas + $pendientes) -eq 60
+$sinPerdidas = ($exitosas + $fallidas + $pendientes) -eq $TOTAL_SOLICITUDES
 
 Write-Host "Evaluacion del Sistema:" -ForegroundColor White
 if ($sinPerdidas) {
-    Write-Host "  [OK] Sin perdida de solicitudes (60/60)" -ForegroundColor Green
+    Write-Host "  [OK] Sin perdida de solicitudes ($TOTAL_SOLICITUDES/$TOTAL_SOLICITUDES)" -ForegroundColor Green
 } else {
     Write-Host "  [ERROR] Perdida de solicitudes detectada" -ForegroundColor Red
 }
@@ -508,15 +511,15 @@ if ($huboFailover) {
 }
 
 if ($exitosas -ge 50) {
-    Write-Host "  [OK] Alta disponibilidad (${exitosas}/60 completadas)" -ForegroundColor Green
+    Write-Host "  [OK] Alta disponibilidad (${exitosas}/$TOTAL_SOLICITUDES completadas)" -ForegroundColor Green
 } else {
-    Write-Host "  [WARN] Baja disponibilidad (${exitosas}/60 completadas)" -ForegroundColor Yellow
+    Write-Host "  [WARN] Baja disponibilidad (${exitosas}/$TOTAL_SOLICITUDES completadas)" -ForegroundColor Yellow
 }
 Write-Host ""
 
 if ($sinPerdidas -and $huboFailover -and $exitosas -ge 50) {
     Write-Host "  PRUEBA EXITOSA - El sistema manejo la carga con failover automatico" -ForegroundColor Green
-    Write-Host "  El sistema manejo 60 solicitudes concurrentes con failover automatico" -ForegroundColor Green
+    Write-Host "  El sistema manejo 100 solicitudes concurrentes con failover automatico" -ForegroundColor Green
 } else {
     Write-Host "  Revisa los resultados - puede haber problemas en el sistema" -ForegroundColor Yellow
 }
