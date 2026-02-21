@@ -28,7 +28,7 @@ class StructuredLogger:
         if not self.logger.handlers:
             formatter = logging.Formatter('%(message)s')
 
-            file_handler = logging.FileHandler(log_file)
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
             file_handler.setFormatter(formatter)
 
             console_handler = logging.StreamHandler()
