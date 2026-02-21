@@ -1,5 +1,15 @@
 # Experimento de Disponibilidad — Equipo 17
 
+## Conformación de equipo
+
+| Nombres        | email uniandes               | Usuario github | 
+|----------------|------------------------------|----------------|
+| Wendy Arango    | w.arangoc@uniandes.edu.co    | warango4       |
+| Andrés Echeverry| a.echeverryb@uniandes.edu.co | afecheverryb10 |
+| Juan Vega | js.vega1@uniandes.edu.co     | jsebasvegag    |
+| Julio Urian   | j.urianv@uniandes.edu.co     | jurianvilla    |
+
+
 Sistema completo de disponibilidad funcional con redundancia activo-pasiva, failover automático y load balancing inteligente usando Flask, Celery y Redis.
 
 ## 🚀 Quick Start
