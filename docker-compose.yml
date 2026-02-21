@@ -75,6 +75,7 @@ services:
       - HEALTHCHECK_REQUEST_QUEUE=healthcheck.request
       - HEALTHCHECK_RESPONSE_QUEUE=healthcheck.response
       - RESERVAS_QUEUE=healthcheck.request.principal
+      - RECEPTOR_URL=http://receptor:5000
     volumes:
       - ./logs:/app/logs
     logging:

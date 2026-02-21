@@ -5,6 +5,7 @@ Load balancer que enruta solicitudes entre instancias de reservas según disponi
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -14,42 +15,13 @@ from flask import Flask, request, jsonify
 import pytz
 
 from receptor.config import get_config
-from receptor.tareas.tareas import celery_app, get_respuesta, get_metricas
+from receptor.tareas.tareas import celery_app, get_respuesta, get_metricas, structured_logger
 
 # Configuración
 config = get_config()
 
 # Cliente Redis para caché de estado
 redis_client = redis.Redis.from_url(config.CELERY_BROKER_URL)
-
-# Logging estructurado
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(message)s'
-)
-logger = logging.getLogger(__name__)
-
-
-def _log(level: str, event: str, **kwargs):
-    """Helper para logging estructurado"""
-    tz = pytz.timezone(config.TIMEZONE)
-    log_entry = {
-        'timestamp': datetime.now(tz).isoformat(),
-        'level': level,
-        'service': config.SERVICE_NAME,
-        'event': event,
-        **kwargs
-    }
-    log_message = json.dumps(log_entry, ensure_ascii=False)
-    
-    if level == 'INFO':
-        logger.info(log_message)
-    elif level == 'WARNING':
-        logger.warning(log_message)
-    elif level == 'ERROR':
-        logger.error(log_message)
-    else:
-        logger.debug(log_message)
 
 
 def get_estado_monitor() -> Dict[str, Any]:
@@ -86,9 +58,8 @@ def get_estado_monitor() -> Dict[str, Any]:
         return estado
         
     except Exception as e:
-        _log(
-            'ERROR',
-            'ERROR_CONSULTANDO_MONITOR',
+        structured_logger.error(
+            event='ERROR_CONSULTANDO_MONITOR',
             error=str(e),
             monitor_url=config.MONITOR_URL
         )
@@ -131,9 +102,8 @@ def enrutar_solicitud(datos: Dict[str, Any]) -> Dict[str, Any]:
         queue_respuestas = config.RESPUESTAS_REDUNDANCIA_QUEUE
         instancia = 'redundancia'
     
-    _log(
-        'INFO',
-        'ENRUTANDO_SOLICITUD',
+    structured_logger.info(
+        event='ENRUTANDO_SOLICITUD',
         solicitud_id=solicitud_id,
         instancia=instancia,
         disponible=disponible,
@@ -161,9 +131,8 @@ def enrutar_solicitud(datos: Dict[str, Any]) -> Dict[str, Any]:
             countdown=config.SOLICITUD_TIMEOUT
         )
         
-        _log(
-            'INFO',
-            'SOLICITUD_ENVIADA',
+        structured_logger.info(
+            event='SOLICITUD_ENVIADA',
             solicitud_id=solicitud_id,
             instancia=instancia,
             queue=queue_solicitudes
@@ -182,9 +151,8 @@ def enrutar_solicitud(datos: Dict[str, Any]) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        _log(
-            'ERROR',
-            'ERROR_ENVIANDO_SOLICITUD',
+        structured_logger.error(
+            event='ERROR_ENVIANDO_SOLICITUD',
             solicitud_id=solicitud_id,
             instancia=instancia,
             error=str(e)
@@ -201,36 +169,29 @@ app.config.from_object(config)
 def health():
     """
     Health check del receptor.
-    Verifica conectividad con Redis y estado del monitor.
+    Verifica conectividad con Redis.
     """
     try:
         # Verificar Redis
         redis_client.ping()
         redis_ok = True
+        redis_error = None
     except Exception as e:
         redis_ok = False
         redis_error = str(e)
-    
-    # Verificar monitor
-    try:
-        response = requests.get(f'{config.MONITOR_URL}/health', timeout=5)
-        monitor_ok = response.status_code == 200
-    except Exception:
-        monitor_ok = False
     
     tz = pytz.timezone(config.TIMEZONE)
     
     health_data = {
         'service': config.SERVICE_NAME,
-        'status': 'healthy' if redis_ok and monitor_ok else 'degraded',
+        'status': 'healthy' if redis_ok else 'degraded',
         'timestamp': datetime.now(tz).isoformat(),
         'checks': {
-            'redis': {'status': 'ok' if redis_ok else 'error', 'error': redis_error if not redis_ok else None},
-            'monitor': {'status': 'ok' if monitor_ok else 'error'}
+            'redis': {'status': 'ok' if redis_ok else 'error', 'error': redis_error}
         }
     }
     
-    status_code = 200 if redis_ok and monitor_ok else 503
+    status_code = 200 if redis_ok else 503
     
     return jsonify(health_data), status_code
 
@@ -278,7 +239,7 @@ def crear_solicitud():
         }), 202  # 202 Accepted
         
     except Exception as e:
-        _log('ERROR', 'ERROR_CREANDO_SOLICITUD', error=str(e))
+        structured_logger.error(event='ERROR_CREANDO_SOLICITUD', error=str(e))
         return jsonify({
             'error': 'Error procesando solicitud',
             'details': str(e)
@@ -373,6 +334,78 @@ def metricas():
     }), 200
 
 
+@app.route('/estado-servicio', methods=['POST'])
+def recibir_estado_servicio():
+    """
+    Endpoint para recibir notificaciones PUSH del monitor sobre cambios de estado.
+    Esto permite al receptor reaccionar inmediatamente cuando el servicio de reservas
+    cambia de estado, sin depender del polling.
+    
+    Body (JSON):
+        {
+            "event": "SERVICE_DOWN" | "SERVICE_RECOVERED",
+            "service": "reservas",
+            "available": true | false,
+            "status": "AVAILABLE" | "UNAVAILABLE",
+            "timestamp": "...",
+            "error": "mensaje de error opcional"
+        }
+    """
+    try:
+        datos = request.get_json()
+        
+        if not datos:
+            return jsonify({'error': 'Se requiere body JSON'}), 400
+        
+        event = datos.get('event')
+        available = datos.get('available')
+        status = datos.get('status')
+        timestamp = datos.get('timestamp')
+        error = datos.get('error')
+        
+        structured_logger.info(
+            event='ESTADO_RECIBIDO_PUSH',
+            event_type=event,
+            available=available,
+            status=status,
+            timestamp=timestamp
+        )
+        
+        # Actualizar caché inmediatamente con el nuevo estado
+        cache_key = 'receptor:cache:estado_monitor'
+        estado_actualizado = {
+            'service': 'reservas',
+            'available': available,
+            'status': status,
+            'timestamp': timestamp,
+            'source': 'push_notification'
+        }
+        
+        # Guardar en caché con TTL extendido ya que es información fresca del monitor
+        redis_client.setex(
+            cache_key,
+            config.CACHE_ESTADO_TTL * 10,  # TTL extendido para notificaciones push
+            json.dumps(estado_actualizado)
+        )
+        
+        structured_logger.info(
+            event='CACHE_ACTUALIZADO_PUSH',
+            event_type=event,
+            available=available,
+            cache_key=cache_key
+        )
+        
+        return jsonify({
+            'message': 'Estado recibido y caché actualizado',
+            'event': event,
+            'available': available
+        }), 200
+        
+    except Exception as e:
+        structured_logger.error(event='ERROR_RECIBIENDO_ESTADO_PUSH', error=str(e))
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/limpiar-cache', methods=['POST'])
 def limpiar_cache():
     """
@@ -382,7 +415,7 @@ def limpiar_cache():
     cache_key = 'receptor:cache:estado_monitor'
     redis_client.delete(cache_key)
     
-    _log('INFO', 'CACHE_LIMPIADO', cache_key=cache_key)
+    structured_logger.info(event='CACHE_LIMPIADO', cache_key=cache_key)
     
     return jsonify({
         'message': 'Caché del estado del monitor limpiado',
@@ -391,10 +424,12 @@ def limpiar_cache():
 
 
 if __name__ == '__main__':
-    _log('INFO', 'RECEPTOR_INICIANDO', 
-         host=config.FLASK_HOST, 
-         port=config.FLASK_PORT,
-         monitor_url=config.MONITOR_URL)
+    structured_logger.info(
+        event='RECEPTOR_INICIANDO', 
+        host=config.FLASK_HOST, 
+        port=config.FLASK_PORT,
+        monitor_url=config.MONITOR_URL
+    )
     
     app.run(
         host=config.FLASK_HOST,

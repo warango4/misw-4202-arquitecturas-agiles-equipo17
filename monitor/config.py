@@ -18,7 +18,7 @@ class DefaultConfig:
     FLASK_PORT = int(os.environ.get('FLASK_PORT', 5003))
     
     # Health Check
-    HEALTH_CHECK_INTERVAL = float(os.environ.get('HEALTH_CHECK_INTERVAL', 5))  # 200ms
+    HEALTH_CHECK_INTERVAL = float(os.environ.get('HEALTH_CHECK_INTERVAL', 0.5))  # 200ms
     HEALTH_CHECK_TIMEOUT = int(os.environ.get('HEALTH_CHECK_TIMEOUT', 10))  # segundos
     HEALTH_CHECK_TTL = int(os.environ.get('HEALTH_CHECK_TTL', 15))  # segundos
     
@@ -28,7 +28,7 @@ class DefaultConfig:
     
     # URLs de servicios
     RESERVAS_SERVICE_URL = os.environ.get('RESERVAS_SERVICE_URL', 'http://localhost:5001')
-    NOTIFICACIONES_URL = os.environ.get('NOTIFICACIONES_URL', 'http://localhost:5002')
+    RECEPTOR_URL = os.environ.get('RECEPTOR_URL', 'http://localhost:5000')
     
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')

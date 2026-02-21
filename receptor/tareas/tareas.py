@@ -5,22 +5,78 @@ Recibe respuestas de las instancias de reservas (principal y redundancia)
 
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Dict, Any
 import redis
 from celery import Celery
+from celery.signals import task_prerun, task_postrun, task_failure
 from receptor.config import get_config
 import pytz
 
 # Configuración
 config = get_config()
 
-# Logging estructurado
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(message)s'
-)
-logger = logging.getLogger(__name__)
+# Asegurar que el directorio de logs exista
+log_dir = os.path.dirname(config.LOG_FILE)
+if log_dir:
+    os.makedirs(log_dir, exist_ok=True)
+
+
+# ============================================================================
+# LOGGER ESTRUCTURADO PARA OBSERVABILIDAD
+# ============================================================================
+class StructuredLogger:
+    """Logger estructurado con trazas claras para observabilidad."""
+    
+    def __init__(self, service_name: str, log_file: str):
+        self.service_name = service_name
+        self.tz = pytz.timezone(config.TIMEZONE)
+        self.logger = logging.getLogger(service_name)
+        self.logger.setLevel(logging.INFO)
+        
+        # Evitar duplicación de handlers
+        if not self.logger.handlers:
+            formatter = logging.Formatter('%(message)s')
+            
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)
+    
+    def _get_timestamp(self) -> str:
+        return datetime.now(self.tz).isoformat()
+    
+    def _format_log(self, level: str, event: str, **kwargs) -> str:
+        """Genera log estructurado en JSON."""
+        log_entry = {
+            "timestamp": self._get_timestamp(),
+            "level": level,
+            "service": self.service_name,
+            "event": event,
+        }
+        log_entry.update(kwargs)
+        return json.dumps(log_entry, ensure_ascii=False)
+    
+    def info(self, event: str, **kwargs):
+        self.logger.info(self._format_log("INFO", event, **kwargs))
+    
+    def warning(self, event: str, **kwargs):
+        self.logger.warning(self._format_log("WARNING", event, **kwargs))
+    
+    def error(self, event: str, **kwargs):
+        self.logger.error(self._format_log("ERROR", event, **kwargs))
+    
+    def debug(self, event: str, **kwargs):
+        self.logger.debug(self._format_log("DEBUG", event, **kwargs))
+
+
+# Inicializar logger estructurado
+structured_logger = StructuredLogger(config.SERVICE_NAME, config.LOG_FILE)
 
 # Cliente Redis para almacenar respuestas
 redis_client = redis.Redis.from_url(config.CELERY_BROKER_URL)
@@ -43,26 +99,35 @@ celery_app.conf.update(
 )
 
 
-def _log(level: str, event: str, **kwargs):
-    """Helper para logging estructurado"""
-    tz = pytz.timezone(config.TIMEZONE)
-    log_entry = {
-        'timestamp': datetime.now(tz).isoformat(),
-        'level': level,
-        'service': config.SERVICE_NAME,
-        'event': event,
-        **kwargs
-    }
-    log_message = json.dumps(log_entry, ensure_ascii=False)
-    
-    if level == 'INFO':
-        logger.info(log_message)
-    elif level == 'WARNING':
-        logger.warning(log_message)
-    elif level == 'ERROR':
-        logger.error(log_message)
-    else:
-        logger.debug(log_message)
+# ============================================================================
+# SIGNALS PARA TRAZABILIDAD
+# ============================================================================
+@task_prerun.connect
+def task_prerun_handler(task_id, task, args, kwargs, **kw):
+    structured_logger.info(
+        event="TASK_START",
+        task_id=task_id,
+        task_name=task.name
+    )
+
+
+@task_postrun.connect
+def task_postrun_handler(task_id, task, args, kwargs, retval, state, **kw):
+    structured_logger.info(
+        event="TASK_END",
+        task_id=task_id,
+        task_name=task.name,
+        state=state
+    )
+
+
+@task_failure.connect
+def task_failure_handler(task_id, exception, args, kwargs, traceback, einfo, **kw):
+    structured_logger.error(
+        event="TASK_FAILURE",
+        task_id=task_id,
+        exception=str(exception)
+    )
 
 
 @celery_app.task(name='receptor.recibir_respuesta', bind=True)
@@ -87,9 +152,8 @@ def recibir_respuesta(self, resultado: Dict[str, Any]):
     service = resultado.get('service')
     error = resultado.get('error')
     
-    _log(
-        'INFO',
-        'RESPUESTA_RECIBIDA',
+    structured_logger.info(
+        event='RESPUESTA_RECIBIDA',
         solicitud_id=solicitud_id,
         status=status,
         service=service,
@@ -111,25 +175,22 @@ def recibir_respuesta(self, resultado: Dict[str, Any]):
         redis_client.incr(counter_key)
         
         if status == 'procesada':
-            _log(
-                'INFO',
-                'RESPUESTA_PROCESADA',
+            structured_logger.info(
+                event='RESPUESTA_PROCESADA',
                 solicitud_id=solicitud_id,
                 service=service
             )
         else:
-            _log(
-                'WARNING',
-                'RESPUESTA_CON_ERROR',
+            structured_logger.warning(
+                event='RESPUESTA_CON_ERROR',
                 solicitud_id=solicitud_id,
                 service=service,
                 error=error
             )
             
     except Exception as e:
-        _log(
-            'ERROR',
-            'ERROR_GUARDANDO_RESPUESTA',
+        structured_logger.error(
+            event='ERROR_GUARDANDO_RESPUESTA',
             solicitud_id=solicitud_id,
             error=str(e)
         )
@@ -151,9 +212,8 @@ def verificar_timeout(self, solicitud_id: str, timestamp_envio: str):
     
     if respuesta is None:
         # No se recibió respuesta, marcar como timeout
-        _log(
-            'ERROR',
-            'SOLICITUD_TIMEOUT',
+        structured_logger.error(
+            event='SOLICITUD_TIMEOUT',
             solicitud_id=solicitud_id,
             timestamp_envio=timestamp_envio,
             timeout_seconds=config.SOLICITUD_TIMEOUT

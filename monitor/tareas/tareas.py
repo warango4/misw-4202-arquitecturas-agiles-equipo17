@@ -409,6 +409,8 @@ def procesar_respuesta(self, is_available: bool, timestamp: str, error_message: 
             )
             state_manager.set_metric('last_recovery_timestamp', timestamp)
             state_manager.set_state(True)
+            # 🔹 PUSH: Notificar al receptor del cambio de estado
+            notificar_cambio_estado.delay('SERVICE_RECOVERED', True, timestamp)
     else:
         state_manager.increment_metric('failed_health_checks')
         if previous_state:
@@ -424,33 +426,73 @@ def procesar_respuesta(self, is_available: bool, timestamp: str, error_message: 
             )
             state_manager.set_metric('last_downtime_start', timestamp)
             state_manager.set_state(False)
+            # 🔹 PUSH: Notificar al receptor del cambio de estado
+            notificar_cambio_estado.delay('SERVICE_DOWN', False, timestamp, error_message)
     
     return {'previous': previous_state, 'current': is_available}
 
 
 @celery_app.task(name='monitor.notificar_cambio_estado', bind=True, max_retries=3)
-def notificar_cambio_estado(self, event: str, timestamp: str, error_message: str = None):
-    """Envía notificación a la API externa sobre cambio de estado."""
+def notificar_cambio_estado(self, event: str, available: bool, timestamp: str, error_message: str = None):
+    """
+    Envía notificación sobre cambio de estado:
+    1. Al receptor (para que actualice su caché inmediatamente)
+    2. A la API de notificaciones externa (opcional)
+    """
     import requests
     
-    notification_url = os.environ.get('NOTIFICATION_API_URL', 'http://localhost:5002/notify')
+    # 1. Notificar al RECEPTOR (PUSH para failover inmediato)
+    receptor_url = f"{config.RECEPTOR_URL}/estado-servicio"
     
-    payload = {
+    receptor_payload = {
         'event': event,
         'service': 'reservas',
+        'available': available,
+        'status': 'AVAILABLE' if available else 'UNAVAILABLE',
         'timestamp': timestamp,
-        'message': 'Servicio no disponible' if event == 'SERVICE_DOWN' else 'Servicio recuperado',
-        'error': error_message,
-        'severity': 'CRITICAL' if event == 'SERVICE_DOWN' else 'INFO'
+        'error': error_message
     }
     
-    logger.info(f"[METRIC] NOTIFICATION_SEND | event={event}")
+    structured_logger.info(
+        event="NOTIFYING_RECEPTOR",
+        receptor_url=receptor_url,
+        state_event=event,
+        available=available
+    )
     
     try:
-        response = requests.post(notification_url, json=payload, timeout=10)
-        logger.info(f"[METRIC] NOTIFICATION_SENT | event={event} | status={response.status_code}")
+        response = requests.post(receptor_url, json=receptor_payload, timeout=5)
+        response.raise_for_status()
+        
+        structured_logger.info(
+            event="RECEPTOR_NOTIFIED",
+            status_code=response.status_code,
+            state_event=event
+        )
     except Exception as e:
-        logger.error(f"[METRIC] NOTIFICATION_ERROR | event={event} | error={str(e)}")
-        raise self.retry(exc=e, countdown=5)
+        structured_logger.error(
+            event="RECEPTOR_NOTIFICATION_ERROR",
+            error=str(e),
+            state_event=event
+        )
+        # Continuar aunque falle - el receptor también hace polling
     
-    return {'event': event, 'status': 'notified'}
+    # 2. Notificar a API EXTERNA (opcional, para alertas)
+    notification_url = os.environ.get('NOTIFICATION_API_URL')
+    if notification_url:
+        external_payload = {
+            'event': event,
+            'service': 'reservas',
+            'timestamp': timestamp,
+            'message': 'Servicio no disponible' if event == 'SERVICE_DOWN' else 'Servicio recuperado',
+            'error': error_message,
+            'severity': 'CRITICAL' if event == 'SERVICE_DOWN' else 'INFO'
+        }
+        
+        try:
+            response = requests.post(notification_url, json=external_payload, timeout=10)
+            logger.info(f"[METRIC] NOTIFICATION_SENT | event={event} | status={response.status_code}")
+        except Exception as e:
+            logger.error(f"[METRIC] NOTIFICATION_ERROR | event={event} | error={str(e)}")
+    
+    return {'event': event, 'status': 'notified', 'available': available}
