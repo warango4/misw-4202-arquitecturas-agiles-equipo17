@@ -35,31 +35,6 @@ python3 test-carga-failover.py   # macOS / Linux
 | Monitor               | 5003   | Monitorea disponibilidad con health checks cada 500ms        |
 | Redis                 | 6380   | Broker de mensajes y almacenamiento de estado                |
 
-## Arquitectura
-
-```
-Cliente (Postman/API)
-         │
-         ▼
-    RECEPTOR :5000
-    (Load Balancer)
-         │
-         ├─────────────┬───────────────┐
-         │             │               │
-         │        Consulta estado      │
-         │             │               │
-         │             ▼               │
-         │        MONITOR :5003        │
-         │      (Health Checks)        │
-         │             │               │
-         │             │ checks cada   │
-         │             │ 500ms         │
-         │             │               │
-         ▼             ▼               ▼
-    PRINCIPAL     REDUNDANCIA       REDIS
-       :5001          :5002          :6380
-    (Activo)       (Pasivo)        (Broker)
-```
 
 ### Flujo de operación
 
