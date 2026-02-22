@@ -2,17 +2,17 @@
 
 ## Conformación de equipo
 
-| Nombres        | email uniandes               | Usuario github | 
-|----------------|------------------------------|----------------|
+| Nombres         | Email Uniandes                | Usuario GitHub |
+|-----------------|-------------------------------|----------------|
 | Wendy Arango    | w.arangoc@uniandes.edu.co    | warango4       |
 | Andrés Echeverry| a.echeverryb@uniandes.edu.co | afecheverryb10 |
-| Juan Vega | js.vega1@uniandes.edu.co     | jsebasvegag    |
-| Julio Urian   | j.urianv@uniandes.edu.co     | jurianvilla    |
+| Juan Vega       | js.vega1@uniandes.edu.co     | jsebasvegag    |
+| Julio Urian     | j.urianv@uniandes.edu.co     | jurianvilla    |
 
 
-Sistema completo de disponibilidad funcional con redundancia activo-pasiva, failover automático y load balancing inteligente usando Flask, Celery y Redis.
+Sistema completo de disponibilidad funcional con redundancia activo-pasiva, failover automático y balanceo de carga inteligente usando Flask, Celery y Redis.
 
-## 🚀 Quick Start
+## Inicio rápido
 
 ```bash
 # 1. Levantar todos los servicios
@@ -20,23 +20,22 @@ docker-compose up --build
 
 # 2. Esperar 30 segundos para que todo inicie
 
-# 3. Ejecutar prueba automatizada
-.\test-failover.ps1
-
-# 4. O probar manualmente con Postman (ver PRUEBAS_POSTMAN.md)
+# 3. Ejecutar prueba de carga con failover
+.\test-carga-failover.ps1        # Windows
+python3 test-carga-failover.py   # macOS / Linux
 ```
 
-## 📋 Componentes
+## Componentes
 
-| Componente | Puerto | Estado | Descripción |
-|---|---|---|---|
-| **Receptor** | 5000 | ✅ Completo | Load balancer que enruta solicitudes según disponibilidad |
-| **Reservas Principal** | 5001 | ✅ Completo | Instancia activa del servicio de reservas |
-| **Reservas Redundancia** | 5002 | ✅ Completo | Instancia pasiva (failover) del servicio de reservas |
-| **Monitor** | 5003 | ✅ Completo | Monitorea disponibilidad con health checks cada 5s |
-| **Redis** | 6380 | ✅ Completo | Broker de mensajes y almacenamiento de estado |
+| Componente            | Puerto | Descripción                                                  |
+|-----------------------|--------|--------------------------------------------------------------|
+| Receptor              | 5000   | Load balancer que enruta solicitudes según disponibilidad    |
+| Reservas Principal    | 5001   | Instancia activa del servicio de reservas                    |
+| Reservas Redundancia  | 5002   | Instancia pasiva (failover) del servicio de reservas         |
+| Monitor               | 5003   | Monitorea disponibilidad con health checks cada 500ms        |
+| Redis                 | 6380   | Broker de mensajes y almacenamiento de estado                |
 
-## 🏗️ Arquitectura
+## Arquitectura
 
 ```
 Cliente (Postman/API)
@@ -53,7 +52,8 @@ Cliente (Postman/API)
          │        MONITOR :5003        │
          │      (Health Checks)        │
          │             │               │
-         │             │ checks cada 5s│
+         │             │ checks cada   │
+         │             │ 500ms         │
          │             │               │
          ▼             ▼               ▼
     PRINCIPAL     REDUNDANCIA       REDIS
@@ -61,65 +61,53 @@ Cliente (Postman/API)
     (Activo)       (Pasivo)        (Broker)
 ```
 
-### Flujo de Operación
+### Flujo de operación
 
-1. **Cliente** envía solicitud → `POST http://localhost:5000/solicitud`
-2. **Receptor** consulta el estado del monitor
-3. **Monitor** reporta si el servicio principal está disponible
-4. **Receptor** enruta a:
-   - `Reservas Principal` si está disponible ✅
-   - `Reservas Redundancia` si el principal falló ⚠️
-5. **Instancia seleccionada** procesa la solicitud
-6. **Receptor** recibe la respuesta y la entrega al cliente
+1. El cliente envía una solicitud a `POST http://localhost:5000/solicitud`
+2. El receptor consulta el estado del monitor
+3. El monitor reporta si el servicio principal está disponible
+4. El receptor enruta la solicitud a:
+   - Reservas Principal, si está disponible
+   - Reservas Redundancia, si el principal ha fallado
+5. La instancia seleccionada procesa la solicitud
+6. El receptor recibe la respuesta y la entrega al cliente
 
-## 🧪 Pruebas
+## Pruebas
 
-### Opción 1: Script Automatizado Básico (Recomendado)
+### Opción 1: Prueba de carga con failover aleatorio (recomendado)
 
-```powershell
-.\test-failover.ps1
-```
-
-Este script ejecuta un flujo completo:
-- ✅ Verifica que todos los servicios estén activos
-- ✅ Envía solicitud normal (debe ir a principal)
-- ✅ Induce fallo en el servicio principal
-- ✅ Verifica que el receptor cambie automáticamente a redundancia
-- ✅ Envía solicitud durante failover (debe ir a redundancia)
-- ✅ Restaura el servicio principal
-- ✅ Verifica que el receptor vuelva automáticamente a principal
-- ✅ Muestra métricas finales
-
-### Opción 2: Prueba de Carga con Failover Aleatorio
+En Windows (PowerShell):
 
 ```powershell
 .\test-carga-failover.ps1
 ```
 
+En macOS o Linux:
+
+```bash
+python3 test-carga-failover.py
+```
+
 Este script prueba el sistema bajo carga:
-- 🚀 Envía **60 solicitudes en paralelo** (bloques de 10)
-- ⚠️ **Induce el error aleatoriamente** durante el envío (entre solicitud 15-35)
-- ✅ Verifica que **todas las solicitudes se procesen** sin pérdida
-- 📊 Muestra distribución: cuántas fueron procesadas por principal vs redundancia
-- ⏱️ **Mide latencias** de cada solicitud (tiempo de respuesta completo)
-- 📈 **Análisis detallado**: min, max, avg, P50, P95 por instancia
-- 🔍 Identifica las 5 solicitudes más lentas
-- ⏲️ Compara latencias entre principal y redundancia
-- ✓ **Demuestra que el sistema no pierde solicitudes** durante failover bajo carga
+- Envía 60 solicitudes en paralelo (bloques de 10)
+- Induce el error aleatoriamente durante el envío (entre solicitudes 15 y 35)
+- Verifica que todas las solicitudes se procesen sin pérdida
+- Muestra la distribución entre principal y redundancia
+- Mide la latencia de cada solicitud (tiempo de respuesta completo)
+- Presenta análisis detallado: min, max, promedio, P50 y P95 por instancia
+- Identifica las 5 solicitudes más lentas
+- Compara latencias entre instancias
 
-**Resultado esperado:**
+Resultado esperado:
 - 60/60 solicitudes procesadas exitosamente
-- Algunas procesadas por principal (antes del fallo)
-- Otras procesadas por redundancia (después del fallo)
+- Algunas procesadas por el principal (antes del fallo)
+- Otras procesadas por la redundancia (después del fallo)
 - 0 solicitudes perdidas
-- Latencias típicas: 1000-3000ms por solicitud
-- Diferencia de latencia entre instancias visible
+- Latencias típicas: 1000–3000ms por solicitud
 
-### Opción 3: Pruebas Manuales con Postman
+### Opción 2: Pruebas manuales con curl
 
-Ver guía completa en [PRUEBAS_POSTMAN.md](PRUEBAS_POSTMAN.md)
-
-**Endpoints clave:**
+Endpoints clave:
 
 ```bash
 # Enviar solicitud
@@ -133,16 +121,16 @@ curl http://localhost:5000/solicitud/{solicitud_id}
 # Ver estado de enrutamiento
 curl http://localhost:5000/estado-enrutamiento
 
-# Inducir fallo
+# Inducir fallo (activa o desactiva el error en la instancia principal)
 curl -X POST http://localhost:5001/inducir-error
 
 # Ver métricas
 curl http://localhost:5000/metricas
 ```
 
-## 📊 Verificación del Failover
+## Verificación del failover
 
-### 1. Estado Normal (Principal Activo)
+### 1. Estado normal (principal activo)
 
 ```bash
 curl http://localhost:5000/estado-enrutamiento
@@ -159,13 +147,13 @@ curl http://localhost:5000/estado-enrutamiento
 }
 ```
 
-### 2. Inducir Fallo
+### 2. Inducir fallo
 
 ```bash
 curl -X POST http://localhost:5001/inducir-error
 ```
 
-### 3. Verificar Failover (después de 10-15 segundos)
+### 3. Verificar failover (después de unos segundos)
 
 ```bash
 curl http://localhost:5000/estado-enrutamiento
@@ -193,12 +181,12 @@ curl -X POST http://localhost:5000/solicitud \
 ```json
 {
   "solicitud_id": "...",
-  "instancia": "redundancia",  ← Cambió automáticamente
+  "instancia": "redundancia",
   "status": "enviada"
 }
 ```
 
-## 📈 Métricas y Monitoreo
+## Métricas y monitoreo
 
 ```bash
 # Métricas del receptor
@@ -211,7 +199,7 @@ curl http://localhost:5003/estado
 curl http://localhost:5003/metricas
 ```
 
-## 🔍 Logs en Tiempo Real
+## Logs en tiempo real
 
 ```bash
 # Ver todos los logs
@@ -230,19 +218,19 @@ docker logs reservas-principal -f
 docker logs reservas-redundancia -f
 ```
 
-**Eventos clave en logs del receptor:**
+Eventos clave en logs del receptor:
 - `ENRUTANDO_SOLICITUD` — decisión de enrutamiento
 - `SOLICITUD_ENVIADA` — confirmación de envío
 - `RESPUESTA_RECIBIDA` — llegada de respuesta
 
-**Eventos clave en logs del monitor:**
+Eventos clave en logs del monitor:
 - `SERVICE_STATE_CHANGED` — cambio de disponibilidad
 - `HEALTH_CHECK_TIMEOUT` — servicio no responde
 - `SERVICE_RECOVERED` — servicio se recuperó
 
-## 🛠️ Comandos Útiles
+## Comandos útiles
 
-### Gestión de Servicios
+### Gestión de servicios
 
 ```bash
 # Levantar todo
@@ -283,22 +271,21 @@ curl -X POST http://localhost:5000/limpiar-cache
 docker exec redis redis-cli -p 6379 INFO stats
 ```
 
-## 📁 Estructura del Proyecto
+## Estructura del proyecto
 
 ```
 misw-4202-arquitecturas-agiles-equipo17/
 │
 ├── docker-compose.yml           # Orquestación de servicios
 ├── README.md                    # Este archivo
-├── PRUEBAS_POSTMAN.md          # Guía de pruebas manuales
-├── test-failover.ps1           # Script de prueba automatizado
+├── test-carga-failover.ps1     # Script de prueba de carga (PowerShell)
+├── test-carga-failover.py      # Script de prueba de carga (Python)
 │
-├── receptor/                    # ⭐ Load Balancer (Puerto 5000)
+├── receptor/                    # Load Balancer (Puerto 5000)
 │   ├── __init__.py
 │   ├── app.py                  # Flask REST API
 │   ├── config.py               # Configuración
 │   ├── Dockerfile
-│   ├── README.md               # Documentación del receptor
 │   ├── requirements.txt
 │   └── tareas/
 │       ├── __init__.py
@@ -317,9 +304,11 @@ misw-4202-arquitecturas-agiles-equipo17/
 ├── monitor/                     # Monitor de Disponibilidad (Puerto 5003)
 │   ├── __init__.py
 │   ├── app.py                  # Flask API
+│   ├── celery_app.py
 │   ├── config.py
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── tareas.py
 │   └── tareas/
 │       ├── __init__.py
 │       └── tareas.py
@@ -330,77 +319,70 @@ misw-4202-arquitecturas-agiles-equipo17/
     └── reservas.log
 ```
 
-## 🎯 Características Implementadas
+## Características implementadas
 
-### ✅ Receptor (Load Balancer)
+### Receptor (Load Balancer)
 - Enrutamiento inteligente basado en disponibilidad
 - Failover automático a instancia redundante
 - Recovery automático al servicio principal
-- Caché del estado del monitor (TTL 2s)
+- Caché del estado del monitor (TTL 1s)
 - Detección y manejo de timeouts
 - Métricas de solicitudes y respuestas
 - API RESTful para integración con clientes
 
-### ✅ Monitor
-- Health checks funcionales cada 5 segundos
+### Monitor
+- Health checks funcionales cada 500ms
 - Detección automática de fallos
 - Detección automática de recuperación
-- Timeout configurable (10 segundos default)
+- Timeout configurable (10 segundos por defecto)
 - Métricas de disponibilidad
 - Logs estructurados en JSON
 
-### ✅ Servicio de Reservas (Activo-Pasivo)
+### Servicio de Reservas (Activo-Pasivo)
 - Dos instancias idénticas (principal y redundancia)
-- Error inducido controlable en runtime
+- Error inducido controlable en runtime (toggle via `/inducir-error`)
 - Health checks funcionales
 - Procesamiento de solicitudes del receptor
 - Respuestas asíncronas vía Celery
 
-### ✅ Infraestructura
+### Infraestructura
 - Docker Compose para orquestación
 - Redis como broker de mensajes
 - Logs persistentes en volumen
 - Configuración por variables de entorno
 - Health checks HTTP en todos los servicios
 
-## 🔧 Configuración
+## Configuración
 
 Todos los servicios se configuran mediante variables de entorno en [docker-compose.yml](docker-compose.yml).
 
-**Variables clave del Receptor:**
-- `MONITOR_URL`: URL del servicio monitor (default: http://monitor:5003)
-- `CACHE_ESTADO_TTL`: TTL del caché en segundos (default: 2)
-- `SOLICITUD_TIMEOUT`: Timeout de solicitudes en segundos (default: 30)
+Variables clave del Receptor:
+- `MONITOR_URL`: URL del servicio monitor (por defecto: `http://monitor:5003`)
+- `CACHE_ESTADO_TTL`: TTL del caché en segundos (por defecto: `1`)
+- `SOLICITUD_TIMEOUT`: Timeout de solicitudes en segundos (por defecto: `5`)
 
-**Variables clave del Monitor:**
-- `HEALTH_CHECK_INTERVAL`: Intervalo entre checks en segundos (default: 5)
-- `HEALTH_CHECK_TIMEOUT`: Timeout antes de marcar como caído (default: 10)
+Variables clave del Monitor:
+- `HEALTH_CHECK_INTERVAL`: Intervalo entre checks en segundos (por defecto: `0.5`)
+- `HEALTH_CHECK_TIMEOUT`: Timeout antes de marcar como caído (por defecto: `10`)
 
-Ver documentación completa de variables en cada servicio:
-- [receptor/README.md](receptor/README.md)
-- [monitor/README.md](monitor/README.md) (si existe)
-- [reservas/README.md](reservas/README.md) (si existe)
+## Contexto académico
 
-## 🎓 Contexto Académico
-
-**Curso:** MISW-4202 Arquitecturas Ágiles  
-**Universidad:** Universidad de los Andes  
-**Ciclo:** 3  
+**Curso:** MISW-4202 Arquitecturas Ágiles
+**Universidad:** Universidad de los Andes
+**Ciclo:** 3
 **Equipo:** 17
 
-**Objetivo del Experimento:**  
+**Objetivo del experimento:**
 Demostrar un sistema de alta disponibilidad con patrón activo-pasivo, donde el receptor (load balancer) detecta automáticamente fallos en el servicio principal y enruta solicitudes a una instancia redundante sin pérdida de requests.
 
-## 📖 Referencias
+## Referencias
 
-- [PRUEBAS_POSTMAN.md](PRUEBAS_POSTMAN.md) — Guía completa de pruebas manuales
-- [receptor/README.md](receptor/README.md) — Documentación del receptor
 - [Celery Documentation](https://docs.celeryproject.org/)
 - [Flask Documentation](https://flask.palletsprojects.com/)
 - [Redis Documentation](https://redis.io/docs/)
 
-## 👥 Equipo 17
+## Equipo 17
 
-Experimento de disponibilidad con redundancia activo-pasiva  
-Arquitecturas Ágiles - Universidad de los Andes  
+Experimento de disponibilidad con redundancia activo-pasiva
+Arquitecturas Ágiles — Universidad de los Andes
 2026
