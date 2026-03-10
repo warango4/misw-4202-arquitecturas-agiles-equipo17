@@ -1,0 +1,5 @@
+flask==3.0.3
+PyJWT==2.8.0
+SQLAlchemy==2.0.29
+psycopg2-binary==2.9.9
+pytz==2024.1

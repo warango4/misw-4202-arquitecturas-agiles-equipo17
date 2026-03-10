@@ -1,0 +1,98 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    container_name: travelhub_db
+    environment:
+      POSTGRES_USER: travelhub
+      POSTGRES_PASSWORD: travelhub
+      POSTGRES_DB: travelhub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db_init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travelhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - travelhub_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: travelhub_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - travelhub_net
+
+  auth_service:
+    build:
+      context: ./auth_service
+    container_name: travelhub_auth
+    ports:
+      - "5001:5001"
+    environment:
+      SECRET_KEY: super-secret-key
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_MINUTES: 60
+      DATABASE_URL: postgresql://travelhub:travelhub@db:5432/travelhub
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - travelhub_net
+    restart: on-failure
+
+  receptor_service:
+    build:
+      context: ./receptor_service
+    container_name: travelhub_receptor
+    ports:
+      - "5002:5002"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      REDIS_AUDITORIA_TTL: 3600
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - travelhub_net
+    restart: on-failure
+
+  api_gateway:
+    build:
+      context: ./api_gateway
+    container_name: travelhub_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      SECRET_KEY: super-secret-key
+      JWT_ALGORITHM: HS256
+      AUTH_SERVICE_URL: http://auth_service:5001
+      RECEPTOR_SERVICE_URL: http://receptor_service:5002
+      HISTORICO_SERVICE_URL: http://XXXXXX:5003
+    depends_on:
+      - auth_service
+      - receptor_service
+    networks:
+      - travelhub_net
+    restart: on-failure
+
+volumes:
+  postgres_data:
+
+networks:
+  travelhub_net:
+    driver: bridge
