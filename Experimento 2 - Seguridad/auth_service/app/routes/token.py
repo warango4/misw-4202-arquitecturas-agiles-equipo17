@@ -28,6 +28,9 @@ def token():
     grant_type = request.form.get("grant_type")
     client_id = request.form.get("client_id")
     client_secret = request.form.get("client_secret")
+    client_ip = request.form.get("client_ip")  # IP from API Gateway for MITM protection
+
+    logger.info(f"[{get_bogota_time()}] [INFO] IP del cliente recibida: {client_ip}")
 
     valid, error = validate_credentials(client_id, client_secret, grant_type)
     if not valid:
@@ -48,8 +51,11 @@ def token():
             permissions,
             current_app.config["SECRET_KEY"],
             current_app.config["JWT_ALGORITHM"],
-            current_app.config["JWT_EXPIRATION_MINUTES"]
+            current_app.config["JWT_EXPIRATION_MINUTES"],
+            client_ip  # Include client IP in token
         )
+
+        logger.info(f"[{get_bogota_time()}] [INFO] Token generado con contexto IP: {client_ip}")
 
         return jsonify({
             "access_token": token_value,
