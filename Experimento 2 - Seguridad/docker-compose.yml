@@ -71,6 +71,27 @@ services:
       - travelhub_net
     restart: on-failure
 
+  historico_service:
+    build:
+      context: ./historico_service
+    container_name: travelhub_historico
+    ports:
+      - "5003:5003"
+    environment:
+      SECRET_KEY: super-secret-key
+      JWT_ALGORITHM: HS256
+      DATABASE_URL: postgresql://travelhub:travelhub@db:5432/travelhub
+      REDIS_URL: redis://redis:6379/0
+      SESSION_BLACKLIST_TTL: 10
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - travelhub_net
+    restart: on-failure
+
   api_gateway:
     build:
       context: ./api_gateway
@@ -82,10 +103,11 @@ services:
       JWT_ALGORITHM: HS256
       AUTH_SERVICE_URL: http://auth_service:5001
       RECEPTOR_SERVICE_URL: http://receptor_service:5002
-      HISTORICO_SERVICE_URL: http://XXXXXX:5003
+      HISTORICO_SERVICE_URL: http://historico_service:5003
     depends_on:
       - auth_service
       - receptor_service
+      - historico_service
     networks:
       - travelhub_net
     restart: on-failure
