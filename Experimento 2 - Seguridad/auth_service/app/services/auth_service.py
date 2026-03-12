@@ -1,4 +1,5 @@
 import jwt
+import uuid
 import logging
 import pytz
 from datetime import datetime, timedelta
@@ -50,15 +51,40 @@ def get_user_permissions(session, usuario_id):
     return [p.nombre for p in permisos]
 
 
-def generate_jwt(usuario, permissions, secret_key, algorithm, expiration_minutes):
+def generate_jwt(usuario, permissions, secret_key, algorithm, expiration_minutes, client_ip=None):
+    """
+    Generate JWT token with client IP for MITM detection.
+    
+    The token includes:
+    - sub: user identifier (client_id)
+    - nombre: user name
+    - permissions: list of user permissions
+    - exp: expiration timestamp
+    - iat: issued at timestamp
+    - jti: unique token identifier (for session invalidation)
+    - client_ip: IP address from which the token was requested (for MITM detection)
+    """
     expiration = datetime.utcnow() + timedelta(minutes=expiration_minutes)
+    jti = str(uuid.uuid4())  # Unique token identifier
+    
     payload = {
         "sub": usuario.client_id,
         "nombre": usuario.nombre,
         "permissions": permissions,
         "exp": expiration,
-        "iat": datetime.utcnow()
+        "iat": datetime.utcnow(),
+        "jti": jti,
+        "client_ip": client_ip  # Store client IP for MITM detection
     }
+    
     token = jwt.encode(payload, secret_key, algorithm=algorithm)
-    logger.info(f"[{get_bogota_time()}] [INFO] JWT generado para usuario: {usuario.client_id}")
+    
+    logger.info(
+        f"[{get_bogota_time()}] [INFO] JWT generado para usuario: {usuario.client_id} | "
+        f"JTI: {jti} | IP: {client_ip}"
+    )
+    logger.info(
+        f"[{get_bogota_time()}] [SECURITY] Token vinculado a IP de origen: {client_ip}"
+    )
+    
     return token
