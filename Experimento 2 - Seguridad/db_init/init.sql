@@ -35,6 +35,10 @@ INSERT INTO usuarios (client_id, client_secret, nombre)
 VALUES ('test', 'test', 'Test User')
 ON CONFLICT (client_id) DO NOTHING;
 
+INSERT INTO usuarios (client_id, client_secret, nombre)
+VALUES ('test2', 'test2', 'Test User2')
+ON CONFLICT (client_id) DO NOTHING;
+
 INSERT INTO permisos (nombre, descripcion)
 VALUES
     ('reserva', 'Acceso al endpoint /reserva'),
@@ -61,6 +65,16 @@ WHERE u.client_id = 'test'
       WHERE up.usuario_id = u.id AND up.permiso_id = p.id
   );
 
+INSERT INTO usuario_permisos (usuario_id, permiso_id)
+SELECT u.id, p.id
+FROM usuarios u, permisos p
+WHERE u.client_id = 'test2'
+  AND p.nombre IN ('reserva', 'historico')
+  AND NOT EXISTS (
+      SELECT 1 FROM usuario_permisos up
+      WHERE up.usuario_id = u.id AND up.permiso_id = p.id
+  );
+
 INSERT INTO reservas (usuario_id, checkin, checkout, destino, valor_pagado)
 SELECT u.id, '2024-03-01', '2024-03-07', 'Cartagena', '1500000'
 FROM usuarios u WHERE u.client_id = 'admin';
@@ -68,3 +82,7 @@ FROM usuarios u WHERE u.client_id = 'admin';
 INSERT INTO reservas (usuario_id, checkin, checkout, destino, valor_pagado)
 SELECT u.id, '2024-06-15', '2024-06-20', 'Medellín', '900000'
 FROM usuarios u WHERE u.client_id = 'admin';
+
+INSERT INTO reservas (usuario_id, checkin, checkout, destino, valor_pagado)
+SELECT u.id, '2024-06-15', '2024-06-20', 'Cucuta', '800000'
+FROM usuarios u WHERE u.client_id = 'test2';

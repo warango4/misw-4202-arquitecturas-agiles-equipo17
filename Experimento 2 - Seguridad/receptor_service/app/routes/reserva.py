@@ -46,8 +46,14 @@ def receptor_reserva():
     queue_request = current_app.config["QUEUE_REQUEST"]
     queue_response = current_app.config["QUEUE_RESPONSE"]
 
+    # Enviar payload con checksum original para validación de integridad
+    message_to_queue = {
+        "checksum_original": checksum,
+        "payload": payload
+    }
+
     try:
-        enqueue_request(redis_client, queue_request, payload)
+        enqueue_request(redis_client, queue_request, message_to_queue)
     except Exception as e:
         logger.error(f"[{get_bogota_time()}] [ERROR] Error al encolar reserva: {str(e)}")
         return jsonify({"error": "Error interno al encolar reserva"}), 500

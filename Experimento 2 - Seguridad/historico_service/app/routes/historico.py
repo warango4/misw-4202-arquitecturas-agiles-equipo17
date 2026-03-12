@@ -112,7 +112,6 @@ def consulta_historico():
                 "detail": "La dirección IP de la solicitud no coincide con la IP de autenticación original",
                 "mitm_detected": True,
                 "session_invalidated": True,
-                "token_ip": detection_info.get("token_ip"),
                 "request_ip": detection_info.get("request_ip")
             }), 403
         else:
