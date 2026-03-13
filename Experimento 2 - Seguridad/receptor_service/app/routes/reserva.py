@@ -39,7 +39,14 @@ def receptor_reserva():
 
     redis_client = get_redis_client(current_app.config["REDIS_URL"])
 
-    checksum = generate_checksum(payload)
+    # Calcular checksum del payload recibido
+    calculated_checksum = generate_checksum(payload)
+    
+    # Si el cliente proporciona un checksum en header (para experimentos de integridad),
+    # usamos ese; de lo contrario usamos el calculado
+    checksum_from_header = request.headers.get("X-Payload-Checksum")
+    checksum = checksum_from_header if checksum_from_header else calculated_checksum
+    
     auditoria = build_auditoria(payload, checksum)
 
     try:
