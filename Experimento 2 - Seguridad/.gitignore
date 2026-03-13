@@ -1,6 +1,8 @@
 # Resultados de experimentos
 experiment_1_results_*.json
 experiment_1_results.log
+experiment_2_results_*.json
+experiment_2_results.log
 
 # Otros archivos de ejecución
 *.log
