@@ -32,6 +32,11 @@ def receptor_reserva():
         logger.warning(f"[{get_bogota_time()}] [WARN] Payload vacío recibido en receptor")
         return jsonify({"error": "Payload requerido"}), 400
 
+    client_id = request.headers.get("X-Authenticated-User")
+    if not client_id:
+        logger.warning(f"[{get_bogota_time()}] [WARN] Header X-Authenticated-User ausente")
+        return jsonify({"error": "Identificador de usuario requerido"}), 400
+
     redis_client = get_redis_client(current_app.config["REDIS_URL"])
 
     checksum = generate_checksum(payload)
@@ -46,10 +51,11 @@ def receptor_reserva():
     queue_request = current_app.config["QUEUE_REQUEST"]
     queue_response = current_app.config["QUEUE_RESPONSE"]
 
-    # Enviar payload con checksum original para validación de integridad
+    # Enviar payload con checksum original y usuario para validación de integridad
     message_to_queue = {
         "checksum_original": checksum,
-        "payload": payload
+        "payload": payload,
+        "client_id": client_id
     }
 
     try:

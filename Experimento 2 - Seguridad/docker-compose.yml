@@ -100,11 +100,31 @@ services:
       - "5004:5004"
     environment:
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://travelhub:travelhub@db:5432/travelhub
       QUEUE_RESERVAS_REQUEST: reservas.request
       QUEUE_RESERVAS_RESPONSE: reservas.response
       QUEUE_CHECKSUM_REQUEST: reservas.checksum.request
       QUEUE_CHECKSUM_RESPONSE: reservas.checksum.response
       CHECKSUM_RESPONSE_TIMEOUT: 10
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - travelhub_net
+    restart: on-failure
+
+  verificador_service:
+    build:
+      context: ./verificador_service
+    container_name: travelhub_verificador
+    ports:
+      - "5005:5005"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      QUEUE_CHECKSUM_REQUEST: reservas.checksum.request
+      QUEUE_CHECKSUM_RESPONSE: reservas.checksum.response
     depends_on:
       redis:
         condition: service_healthy
@@ -128,6 +148,8 @@ services:
       - auth_service
       - receptor_service
       - historico_service
+      - reservas_service
+      - verificador_service
     networks:
       - travelhub_net
     restart: on-failure
