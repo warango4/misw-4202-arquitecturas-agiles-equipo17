@@ -3,6 +3,7 @@ import os
 
 class Config:
     REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://travelhub:travelhub@db:5432/travelhub")
     
     # Queue where receptor_service publishes reservation requests
     QUEUE_RESERVAS_REQUEST = os.getenv("QUEUE_RESERVAS_REQUEST", "reservas.request")

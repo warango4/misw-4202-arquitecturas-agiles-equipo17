@@ -22,6 +22,7 @@ from app.services.redis_service import (
     enqueue_message,
     update_auditoria_estado
 )
+from app.services.db_service import save_reserva
 
 logger = setup_logger("reserva_worker")
 
@@ -36,7 +37,7 @@ class ReservaWorker:
         self.config = config
         self.redis_client = get_redis_client(config.REDIS_URL)
         self.running = False
-        self._pending_checksums = {}  # Mapea checksum_original -> request data
+        self._pending_checksums = {}  # Mapea checksum_original -> request data (payload, client_id, request_start)
         self._lock = threading.Lock()
     
     def start(self):
@@ -92,9 +93,10 @@ class ReservaWorker:
         """
         request_start = datetime.now(BOGOTA_TZ)
         
-        # Extraer checksum_original y payload del mensaje
+        # Extraer checksum_original, payload y client_id del mensaje
         checksum_original = message.get("checksum_original")
         payload = message.get("payload", {})
+        client_id = message.get("client_id")
         
         logger.info(f"[{get_bogota_time()}] [INFO] ========================================")
         logger.info(f"[{get_bogota_time()}] [INFO] Nueva solicitud de reserva recibida")
@@ -148,6 +150,7 @@ class ReservaWorker:
         with self._lock:
             self._pending_checksums[checksum_original] = {
                 "payload": payload,
+                "client_id": client_id,
                 "request_start": request_start.isoformat(),
                 "timestamp": get_bogota_time()
             }
@@ -251,6 +254,7 @@ class ReservaWorker:
             return
         
         payload = pending_data.get("payload", {})
+        client_id = pending_data.get("client_id")
         request_start_str = pending_data.get("request_start")
         request_start = datetime.fromisoformat(request_start_str) if request_start_str else datetime.now(BOGOTA_TZ)
         
@@ -266,7 +270,15 @@ class ReservaWorker:
             
             # Update audit status
             update_auditoria_estado(self.redis_client, checksum, "VERIFICADO")
-            
+
+            # Persist reservation in database
+            saved = save_reserva(self.config.DATABASE_URL, client_id, payload)
+            if not saved:
+                logger.warning(
+                    f"[{get_bogota_time()}] [WARN] Checksum válido pero no se pudo persistir "
+                    f"la reserva en BD para usuario: {client_id}"
+                )
+
             self._send_success_response(payload, checksum, request_start)
         else:
             # Checksum validation failed
