@@ -84,7 +84,7 @@ def consulta_historico():
         if detection_info.get("mitm_detected"):
             logger.critical(
                 f"[{get_bogota_time()}] [CRITICAL] *** RESPUESTA MITM *** "
-                f"Denegando acceso y invalidando sesión"
+                f"Denegando acceso e invalidando sesión"
             )
             
             # Invalidate session
