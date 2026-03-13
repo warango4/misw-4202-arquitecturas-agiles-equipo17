@@ -3,7 +3,7 @@ import pytz
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from app.middleware.auth import validate_token_and_permissions
-from app.services.proxy import forward_post_json
+from app.services.proxy import forward_post_json_with_headers
 
 reserva_bp = Blueprint("reserva", __name__)
 bogota_tz = pytz.timezone("America/Bogota")
@@ -19,9 +19,11 @@ def reserva():
     logger.info(f"[{get_bogota_time()}] [INFO] Request recibido en /reserva")
 
     payload = request.get_json(silent=True)
+    client_id = request.token_payload.get("sub")
 
     receptor_url = current_app.config["RECEPTOR_SERVICE_URL"] + "/receptor/reserva"
-    response = forward_post_json(receptor_url, payload)
+    headers = {"X-Authenticated-User": client_id}
+    response = forward_post_json_with_headers(receptor_url, payload, headers)
 
     if response is None:
         logger.error(f"[{get_bogota_time()}] [ERROR] Fallo al conectar con App Receptor")
