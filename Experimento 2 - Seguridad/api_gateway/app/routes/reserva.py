@@ -22,7 +22,15 @@ def reserva():
     client_id = request.token_payload.get("sub")
 
     receptor_url = current_app.config["RECEPTOR_SERVICE_URL"] + "/receptor/reserva"
+    
+    # Preparar headers a reenviar
     headers = {"X-Authenticated-User": client_id}
+    
+    # Si el cliente envía un checksum personalizado (para validación de integridad), reenviarlo
+    checksum_header = request.headers.get("X-Payload-Checksum")
+    if checksum_header:
+        headers["X-Payload-Checksum"] = checksum_header
+    
     response = forward_post_json_with_headers(receptor_url, payload, headers)
 
     if response is None:
