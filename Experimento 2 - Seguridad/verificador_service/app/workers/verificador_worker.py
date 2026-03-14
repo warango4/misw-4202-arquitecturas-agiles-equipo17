@@ -76,13 +76,6 @@ class VerificadorWorker:
         2. Recalcula el SHA256 del payload
         3. Compara con checksum_original
         4. Publica el resultado en la cola de respuesta
-
-        Args:
-            message: Diccionario con:
-                - checksum_original: checksum calculado por receptor_service
-                - payload: datos de la reserva
-                - correlation_id: identificador de correlación (opcional)
-                - timestamp: marca de tiempo del envío (opcional)
         """
         request_start = datetime.now(BOGOTA_TZ)
 
@@ -160,11 +153,6 @@ class VerificadorWorker:
     def _publish_response(self, checksum_original: str, is_valid: bool, message: str):
         """
         Publica el resultado de la verificación en la cola de respuesta.
-
-        Args:
-            checksum_original: checksum original del receptor
-            is_valid: resultado de la comparación
-            message: mensaje descriptivo del resultado
         """
         response = {
             "checksum_original": checksum_original,

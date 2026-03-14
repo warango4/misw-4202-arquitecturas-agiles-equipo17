@@ -17,13 +17,6 @@ logger = logging.getLogger("route_token")
 
 
 def get_client_ip():
-    """
-    Get the original client IP.
-    Priority:
-    1. X-Forwarded-For (first IP)
-    2. X-Real-IP
-    3. request.remote_addr
-    """
     if request.headers.get("X-Forwarded-For"):
         return request.headers.get("X-Forwarded-For").split(",")[0].strip()
     if request.headers.get("X-Real-IP"):
@@ -43,7 +36,6 @@ def token():
         logger.warning(f"[{get_bogota_time()}] [WARN] Parámetros faltantes en /token")
         return jsonify({"error": "Parámetros grant_type, client_id y client_secret son requeridos"}), 400
 
-    # Get client IP for MITM protection
     client_ip = get_client_ip()
     logger.info(f"[{get_bogota_time()}] [INFO] IP del cliente capturada: {client_ip}")
 
@@ -54,7 +46,6 @@ def token():
         "client_secret": client_secret
     }
 
-    # Forward with client IP included
     response = forward_post_form_with_ip(auth_url, form_data, client_ip)
 
     if response is None:

@@ -6,10 +6,6 @@ logger = setup_logger("session_manager")
 
 
 class SessionManager:
-    """
-    Manager for handling session blacklisting when MITM is detected.
-    Uses Redis to store blacklisted tokens/sessions.
-    """
 
     def __init__(self, redis_url, blacklist_ttl=3600):
         self.redis_client = redis.from_url(redis_url)
@@ -19,21 +15,6 @@ class SessionManager:
         self.MITM_LOG_PREFIX = "mitm:log:"
 
     def invalidate_session(self, jti, user, detection_info):
-        """
-        Invalidate a session by adding it to the blacklist.
-        Also logs the MITM detection event.
-        
-        IMPORTANTE: Solo invalida el token específico (jti), NO toda la sesión del usuario.
-        Esto permite que nuevos tokens del mis usuario puedan ser usados después de un MITM.
-        
-        Args:
-            jti: JWT Token ID
-            user: User identifier
-            detection_info: Information about the MITM detection
-            
-        Returns:
-            Boolean indicating success
-        """
         try:
             # Blacklist ONLY the specific token (by jti) that detected MITM
             # This prevents other tokens of the same user from being blocked
@@ -77,15 +58,6 @@ class SessionManager:
             return False
 
     def is_session_blacklisted(self, jti, user):
-        """
-        Check if a session is blacklisted.
-        
-        Only checks the specific token (jti), NOT all user sessions.
-        This allows other tokens from the same user to continue working.
-        
-        Returns:
-            tuple (is_blacklisted, reason)
-        """
         try:
             # Check ONLY the specific token blacklist
             if jti:
@@ -107,10 +79,6 @@ class SessionManager:
             return False, None
 
     def get_mitm_statistics(self):
-        """
-        Get statistics about MITM detections.
-        Returns count and recent events.
-        """
         try:
             pattern = f"{self.MITM_LOG_PREFIX}*"
             keys = self.redis_client.keys(pattern)

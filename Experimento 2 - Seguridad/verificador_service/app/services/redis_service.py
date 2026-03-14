@@ -17,14 +17,6 @@ def get_redis_client(redis_url: str) -> redis.Redis:
 def dequeue_message(client: redis.Redis, queue_name: str, timeout: int = 1):
     """
     Lee un mensaje de la cola (blocking pop).
-
-    Args:
-        client: Cliente Redis
-        queue_name: Nombre de la cola
-        timeout: Tiempo de espera en segundos
-
-    Returns:
-        dict con el mensaje o None si timeout
     """
     try:
         result = client.blpop(queue_name, timeout=timeout)
@@ -51,11 +43,6 @@ def dequeue_message(client: redis.Redis, queue_name: str, timeout: int = 1):
 def enqueue_message(client: redis.Redis, queue_name: str, message: dict):
     """
     Publica un mensaje en la cola.
-
-    Args:
-        client: Cliente Redis
-        queue_name: Nombre de la cola
-        message: Diccionario con el mensaje
     """
     try:
         client.rpush(queue_name, json.dumps(message))

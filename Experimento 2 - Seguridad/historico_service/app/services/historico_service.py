@@ -5,11 +5,6 @@ logger = setup_logger("historico_service")
 
 
 def get_user_reservations(session, client_id):
-    """
-    Get all reservations for a user by their client_id.
-    
-    Returns tuple (reservations_list, error)
-    """
     try:
         usuario = session.query(Usuario).filter_by(client_id=client_id).first()
         
