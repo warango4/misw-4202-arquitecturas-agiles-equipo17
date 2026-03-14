@@ -23,6 +23,9 @@ class SessionManager:
         Invalidate a session by adding it to the blacklist.
         Also logs the MITM detection event.
         
+        IMPORTANTE: Solo invalida el token específico (jti), NO toda la sesión del usuario.
+        Esto permite que nuevos tokens del mis usuario puedan ser usados después de un MITM.
+        
         Args:
             jti: JWT Token ID
             user: User identifier
@@ -32,7 +35,8 @@ class SessionManager:
             Boolean indicating success
         """
         try:
-            # Blacklist the specific token
+            # Blacklist ONLY the specific token (by jti) that detected MITM
+            # This prevents other tokens of the same user from being blocked
             if jti:
                 blacklist_key = f"{self.BLACKLIST_PREFIX}{jti}"
                 self.redis_client.setex(
@@ -41,19 +45,8 @@ class SessionManager:
                     "invalidated_mitm"
                 )
                 logger.info(
-                    f"[{get_bogota_time()}] [INFO] Sesión invalidada - JTI: {jti} para usuario: {user}"
+                    f"[{get_bogota_time()}] [INFO] Token invalidado por MITM - JTI: {jti} para usuario: {user}"
                 )
-            
-            # Optionally blacklist all sessions for the user
-            user_blacklist_key = f"{self.USER_BLACKLIST_PREFIX}{user}"
-            self.redis_client.setex(
-                user_blacklist_key,
-                self.blacklist_ttl,
-                "all_sessions_invalidated"
-            )
-            logger.warning(
-                f"[{get_bogota_time()}] [WARN] Todas las sesiones invalidadas para usuario: {user}"
-            )
             
             # Log the MITM event for audit/metrics
             mitm_log_key = f"{self.MITM_LOG_PREFIX}{datetime.utcnow().timestamp()}"
@@ -85,28 +78,26 @@ class SessionManager:
 
     def is_session_blacklisted(self, jti, user):
         """
-        Check if a session or user is blacklisted.
+        Check if a session is blacklisted.
+        
+        Only checks the specific token (jti), NOT all user sessions.
+        This allows other tokens from the same user to continue working.
         
         Returns:
             tuple (is_blacklisted, reason)
         """
         try:
-            # Check specific token blacklist
+            # Check ONLY the specific token blacklist
             if jti:
                 token_blacklisted = self.redis_client.get(f"{self.BLACKLIST_PREFIX}{jti}")
                 if token_blacklisted:
                     logger.warning(
-                        f"[{get_bogota_time()}] [WARN] Token blacklisteado detectado - JTI: {jti}"
+                        f"[{get_bogota_time()}] [WARN] Token en blacklist detectado - JTI: {jti}"
                     )
                     return True, "Token invalidado por detección MITM"
             
-            # Check user blacklist
-            user_blacklisted = self.redis_client.get(f"{self.USER_BLACKLIST_PREFIX}{user}")
-            if user_blacklisted:
-                logger.warning(
-                    f"[{get_bogota_time()}] [WARN] Usuario blacklisteado detectado - User: {user}"
-                )
-                return True, "Todas las sesiones del usuario han sido invalidadas"
+            # NOTE: We no longer check user blacklist here, as we only invalidate specific tokens
+            # This is a design decision to allow users to continue using new tokens after a MITM is detected
             
             return False, None
             
