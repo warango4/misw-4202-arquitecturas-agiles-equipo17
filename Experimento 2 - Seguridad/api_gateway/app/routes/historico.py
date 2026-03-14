@@ -17,13 +17,6 @@ logger = logging.getLogger("route_historico")
 
 
 def get_client_ip():
-    """
-    Get the original client IP.
-    Priority:
-    1. X-Forwarded-For (first IP)
-    2. X-Real-IP
-    3. request.remote_addr
-    """
     if request.headers.get("X-Forwarded-For"):
         return request.headers.get("X-Forwarded-For").split(",")[0].strip()
     if request.headers.get("X-Real-IP"):
@@ -38,12 +31,9 @@ def historico():
 
     payload = request.get_json(silent=True)
     
-    # Get original client IP
     client_ip = get_client_ip()
     logger.info(f"[{get_bogota_time()}] [INFO] IP del cliente: {client_ip}")
     
-    # Prepare headers to forward to historico_service
-    # Include the Authorization header and original client IP
     forward_headers = {
         "Authorization": request.headers.get("Authorization"),
         "X-Original-Client-IP": client_ip
