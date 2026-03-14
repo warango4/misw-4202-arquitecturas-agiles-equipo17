@@ -1,4 +1,4 @@
-# Experimento de Disponibilidad — Equipo 17
+# Experimentación — Equipo 17
 
 ## Conformación de equipo
 
