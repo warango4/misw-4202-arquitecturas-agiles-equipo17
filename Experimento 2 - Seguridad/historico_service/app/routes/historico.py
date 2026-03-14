@@ -11,19 +11,6 @@ logger = setup_logger("route_historico")
 
 @historico_bp.route("/consulta/historico", methods=["POST"])
 def consulta_historico():
-    """
-    Endpoint to consult user reservation history.
-    
-    This endpoint implements MITM detection by:
-    1. Extracting the token and client IP
-    2. Validating that the IP in the token matches the request IP
-    3. If MITM is detected, invalidating the session and denying access
-    4. If valid, returning the user's reservation history
-    
-    Expected headers:
-    - Authorization: Bearer <token>
-    - X-Original-Client-IP: <client_ip> (set by API Gateway)
-    """
     request_start = datetime.now()
     
     logger.info(f"[{get_bogota_time()}] [INFO] ========================================")
@@ -170,10 +157,6 @@ def health():
 
 @historico_bp.route("/metrics/mitm", methods=["GET"])
 def mitm_metrics():
-    """
-    Get MITM detection statistics.
-    This endpoint can be used for monitoring and alerting.
-    """
     try:
         session_manager = SessionManager(
             redis_url=current_app.config["REDIS_URL"],

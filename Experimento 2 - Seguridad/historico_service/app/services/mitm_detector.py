@@ -5,20 +5,12 @@ logger = setup_logger("mitm_detector")
 
 
 class MITMDetector:
-    """
-    Service to detect Man-in-the-Middle attacks by comparing
-    the IP address in the token with the actual client IP.
-    """
 
     def __init__(self, secret_key, algorithm):
         self.secret_key = secret_key
         self.algorithm = algorithm
 
     def decode_token(self, token):
-        """
-        Decode JWT token and extract payload.
-        Returns tuple (payload, error)
-        """
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             logger.info(f"[{get_bogota_time()}] [INFO] Token decodificado exitosamente para usuario: {payload.get('sub')}")
@@ -31,18 +23,6 @@ class MITMDetector:
             return None, f"Token inválido: {str(e)}"
 
     def validate_ip_context(self, token, client_ip):
-        """
-        Validate that the IP in the token matches the requesting client IP.
-        
-        Returns tuple (is_valid, payload, detection_info)
-        
-        detection_info contains:
-        - token_ip: IP stored in token
-        - request_ip: IP from current request
-        - mitm_detected: Boolean indicating if MITM was detected
-        - user: User identifier from token
-        - jti: Token unique identifier
-        """
         payload, error = self.decode_token(token)
         
         if error:

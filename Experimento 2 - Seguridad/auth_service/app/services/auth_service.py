@@ -52,18 +52,6 @@ def get_user_permissions(session, usuario_id):
 
 
 def generate_jwt(usuario, permissions, secret_key, algorithm, expiration_minutes, client_ip=None):
-    """
-    Generate JWT token with client IP for MITM detection.
-    
-    The token includes:
-    - sub: user identifier (client_id)
-    - nombre: user name
-    - permissions: list of user permissions
-    - exp: expiration timestamp
-    - iat: issued at timestamp
-    - jti: unique token identifier (for session invalidation)
-    - client_ip: IP address from which the token was requested (for MITM detection)
-    """
     expiration = datetime.utcnow() + timedelta(minutes=expiration_minutes)
     jti = str(uuid.uuid4())  # Unique token identifier
     
